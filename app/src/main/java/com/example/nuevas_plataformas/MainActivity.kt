@@ -26,7 +26,13 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import androidx.datastore.preferences.core.edit
-
+import kotlinx.coroutines.flow.first
+import androidx.compose.material.icons.filled.DarkMode
+import androidx.compose.material.icons.filled.WbSunny
+import androidx.compose.foundation.background
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.foundation.BorderStroke
 
 
 
@@ -49,12 +55,14 @@ data class Tarea(
 
     )
 @Composable
-fun TituloApp() {
+fun TituloApp(modifier: Modifier = Modifier) {
     Text(
         text = "Gestor de Tareas",
-        style =
-            MaterialTheme.typography.headlineMedium,
-        color = MaterialTheme.colorScheme.primary
+        style = MaterialTheme.typography.headlineMedium.copy(
+            textDecoration = TextDecoration.None
+        ),
+        color = MaterialTheme.colorScheme.primary,
+        modifier = modifier
     )
 }
 @Composable
@@ -80,24 +88,81 @@ fun AppTareas() {
     var texto by remember { mutableStateOf("") }
     var contadorId by remember { mutableStateOf(0) }
     var tareaEditando by remember { mutableStateOf<Tarea?>(null) }
-    LaunchedEffect(Unit) {
-        context.dataStore.data.collect { preferences ->
-            val tareasGuardadas = preferences[TAREAS_KEY] ?: ""
-            if (tareasGuardadas.isNotEmpty()) {
-                tareas = convertirDesdeJson(tareasGuardadas)
+    var filtro by remember { mutableStateOf("todas") }
+    val tareasFiltradas = when (filtro) {
+        "completadas" -> tareas.filter { it.completada }
+        "pendientes" -> tareas.filter { !it.completada }
+        else -> tareas
+    }
+
+    var cargado by remember { mutableStateOf(false) }
+    var temaOscuro by remember { mutableStateOf(false) }
+
+    MaterialTheme(
+        colorScheme = if (temaOscuro) darkColorScheme() else lightColorScheme()
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background)
+                .statusBarsPadding()
+                .padding(16.dp)
+
+        ) {
+
+            Spacer(modifier = Modifier.height(16.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                TituloApp(modifier = Modifier.weight(1f))
+                BotonTema(temaOscuro = temaOscuro, onToggle = { temaOscuro = !temaOscuro })
             }
+
         }
     }
-    LaunchedEffect(tareas) {
-        context.dataStore.edit { preferences ->
-            preferences[TAREAS_KEY] = convertirAJson(tareas)
+
+    LaunchedEffect(Unit) {
+        val preferences = context.dataStore.data.first()
+        val tareasGuardadas = preferences[TAREAS_KEY] ?: ""
+        if (tareasGuardadas.isNotEmpty()) {
+            val lista = convertirDesdeJson(tareasGuardadas)
+            tareas = lista
+            contadorId = (lista.maxOfOrNull { it.id } ?: -1) + 1
+        }
+        cargado = true
+    }
+
+    LaunchedEffect(tareas, cargado) {
+        if (cargado) {
+            context.dataStore.edit { preferences ->
+                preferences[TAREAS_KEY] = convertirAJson(tareas)
+            }
         }
     }
     Column(modifier = Modifier
         .fillMaxSize()
+        .statusBarsPadding()
         .padding(16.dp)) {
-        TituloApp()
         Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(24.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceEvenly
+        ) {
+            Button(onClick = { filtro = "todas" }) {
+                Text("Todas")
+            }
+            Button(onClick = { filtro = "completadas" }) {
+                Text("Completadas")
+            }
+            Button(onClick = { filtro = "pendientes" }) {
+                Text("Pendientes")
+            }
+        }
+
         CampoTexto(
             valor = texto,
             onValorChange = { texto = it },
@@ -123,7 +188,7 @@ fun AppTareas() {
         }
         Spacer(modifier = Modifier.height(16.dp))
         ListaTareas(
-            tareas = tareas,
+            tareas = tareasFiltradas,
             onToggle = { tarea ->
                 tareas = tareas.map {
                     if (it.id == tarea.id) it.copy(completada = !it.completada)
@@ -164,7 +229,8 @@ fun ListaTareas(
 
 ) {
     LazyColumn {
-        items(tareas) { tarea ->
+
+        items(tareas, key = { it.id }) { tarea ->
             ItemTarea(
                 tarea = tarea,
                 onToggle = { onToggle(tarea) },
@@ -180,15 +246,24 @@ fun ItemTarea(
     onToggle: () -> Unit,
     onDelete: () -> Unit,
     onEdit: () -> Unit
-
-
 ) {
+    val colorFondo = if (tarea.completada)  // <- aquí
+        MaterialTheme.colorScheme.surfaceVariant
+    else
+        MaterialTheme.colorScheme.surface
+
+    val colorBorde = if (tarea.completada)  // <- y aquí
+        MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
+    else
+        MaterialTheme.colorScheme.outline
+
     TarjetaBase {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(8.dp),
-            horizontalArrangement = Arrangement.SpaceBetween
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
             Row {
                 Checkbox(
@@ -197,11 +272,24 @@ fun ItemTarea(
                 )
                 Text(
                     text = tarea.titulo,
-                    modifier = Modifier
-                        .padding(start = 8.dp)
-                        .clickable { onEdit() },
-                    color = if (tarea.completada) Color.Gray else Color.Black
+                    style = if (tarea.completada)
+                        MaterialTheme.typography.bodyLarge.copy(
+                            textDecoration = TextDecoration.LineThrough
                 )
+                    else MaterialTheme.typography.bodyLarge,
+                    color = if (tarea.completada)
+                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                    else
+                        MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.clickable { onEdit() }
+                )
+                if (tarea.completada) {
+                    Text(
+                        text = "Completada",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
             }
             IconButton(onClick = onDelete) {
                 Icon(Icons.Default.Delete, contentDescription = "Eliminar")
@@ -212,12 +300,15 @@ fun ItemTarea(
 @Composable
 fun TarjetaBase(
     modifier: Modifier = Modifier,
+    colorFondo: Color = MaterialTheme.colorScheme.surface,
+    colorBorde: Color = MaterialTheme.colorScheme.outline,
     contenido: @Composable () -> Unit
 ) {
     Card(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp)
+        modifier = modifier.fillMaxWidth().padding(vertical = 4.dp),
+        colors = CardDefaults.cardColors(containerColor = colorFondo),
+        border = BorderStroke(1.dp, colorBorde),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         contenido()
     }
@@ -231,6 +322,15 @@ fun convertirDesdeJson(json: String): List<Tarea> {
     val gson = Gson()
     val tipo = object : TypeToken<List<Tarea>>() {}.type
     return gson.fromJson(json, tipo)
+}
+@Composable
+fun BotonTema(temaOscuro: Boolean, onToggle: () -> Unit) {
+    IconButton(onClick = onToggle) {
+        Icon(
+            imageVector = if (temaOscuro) Icons.Default.WbSunny else Icons.Default.DarkMode,
+            contentDescription = if (temaOscuro) "Modo claro" else "Modo oscuro"
+        )
+    }
 }
 
 @Preview(showBackground = true)
