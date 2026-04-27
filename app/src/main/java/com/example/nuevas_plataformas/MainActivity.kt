@@ -19,6 +19,16 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.clickable
+import android.content.Context
+import androidx.datastore.preferences.preferencesDataStore
+import androidx.compose.ui.platform.LocalContext
+import androidx.datastore.preferences.core.stringPreferencesKey
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
+import androidx.datastore.preferences.core.edit
+
+
+
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -30,6 +40,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
+
 
 data class Tarea(
     val id: Int,
@@ -59,13 +70,29 @@ fun BotonPrimario(
         Text(texto)
     }
 }
-
+val Context.dataStore by preferencesDataStore(name = "tareas")
 @Composable
 fun AppTareas() {
+    val context = LocalContext.current
+
+    val TAREAS_KEY = stringPreferencesKey("tareas")
     var tareas by remember { mutableStateOf(listOf<Tarea>()) }
     var texto by remember { mutableStateOf("") }
     var contadorId by remember { mutableStateOf(0) }
     var tareaEditando by remember { mutableStateOf<Tarea?>(null) }
+    LaunchedEffect(Unit) {
+        context.dataStore.data.collect { preferences ->
+            val tareasGuardadas = preferences[TAREAS_KEY] ?: ""
+            if (tareasGuardadas.isNotEmpty()) {
+                tareas = convertirDesdeJson(tareasGuardadas)
+            }
+        }
+    }
+    LaunchedEffect(tareas) {
+        context.dataStore.edit { preferences ->
+            preferences[TAREAS_KEY] = convertirAJson(tareas)
+        }
+    }
     Column(modifier = Modifier
         .fillMaxSize()
         .padding(16.dp)) {
@@ -194,6 +221,16 @@ fun TarjetaBase(
     ) {
         contenido()
     }
+}
+fun convertirAJson(tareas: List<Tarea>): String {
+    val gson = Gson()
+    return gson.toJson(tareas)
+}
+
+fun convertirDesdeJson(json: String): List<Tarea> {
+    val gson = Gson()
+    val tipo = object : TypeToken<List<Tarea>>() {}.type
+    return gson.fromJson(json, tipo)
 }
 
 @Preview(showBackground = true)
