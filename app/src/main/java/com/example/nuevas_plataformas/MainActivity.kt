@@ -2,16 +2,13 @@ package com.example.nuevas_plataformas
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import com.example.nuevas_plataformas.ui.theme.Nuevas_PlataformasTheme
-import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -21,6 +18,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.clickable
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -37,7 +35,8 @@ data class Tarea(
     val id: Int,
     val titulo: String,
     val completada: Boolean = false
-)
+
+    )
 @Composable
 fun TituloApp() {
     Text(
@@ -66,6 +65,7 @@ fun AppTareas() {
     var tareas by remember { mutableStateOf(listOf<Tarea>()) }
     var texto by remember { mutableStateOf("") }
     var contadorId by remember { mutableStateOf(0) }
+    var tareaEditando by remember { mutableStateOf<Tarea?>(null) }
     Column(modifier = Modifier
         .fillMaxSize()
         .padding(16.dp)) {
@@ -77,9 +77,20 @@ fun AppTareas() {
             label = "Nueva tarea"
         )
         Spacer(modifier = Modifier.height(8.dp))
-        BotonPrimario("Agregar tarea") {
+        BotonPrimario(
+            texto = if (tareaEditando == null) "Agregar tarea" else "Guardar cambios"
+        ) {
             if (texto.isNotBlank()) {
-                tareas = tareas + Tarea(contadorId++, texto)
+                if (tareaEditando == null) {
+                    tareas = tareas + Tarea(contadorId++, texto)
+                } else {
+                    tareas = tareas.map {
+                        if (it.id == tareaEditando!!.id)
+                            it.copy(titulo = texto)
+                        else it
+                    }
+                    tareaEditando = null
+                }
                 texto = ""
             }
         }
@@ -94,7 +105,12 @@ fun AppTareas() {
             },
             onDelete = { tarea ->
                 tareas = tareas.filter { it.id != tarea.id }
+            },
+            onEdit = { tarea ->
+                texto = tarea.titulo
+                tareaEditando = tarea
             }
+
         )
     }
 }
@@ -116,14 +132,17 @@ fun CampoTexto(
 fun ListaTareas(
     tareas: List<Tarea>,
     onToggle: (Tarea) -> Unit,
-    onDelete: (Tarea) -> Unit
+    onDelete: (Tarea) -> Unit,
+    onEdit: (Tarea) -> Unit
+
 ) {
     LazyColumn {
         items(tareas) { tarea ->
             ItemTarea(
                 tarea = tarea,
                 onToggle = { onToggle(tarea) },
-                onDelete = { onDelete(tarea) }
+                onDelete = { onDelete(tarea) },
+                onEdit = { onEdit(tarea) }
             )
         }
     }
@@ -132,7 +151,10 @@ fun ListaTareas(
 fun ItemTarea(
     tarea: Tarea,
     onToggle: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onEdit: () -> Unit
+
+
 ) {
     TarjetaBase {
         Row(
@@ -148,7 +170,9 @@ fun ItemTarea(
                 )
                 Text(
                     text = tarea.titulo,
-                    modifier = Modifier.padding(start = 8.dp),
+                    modifier = Modifier
+                        .padding(start = 8.dp)
+                        .clickable { onEdit() },
                     color = if (tarea.completada) Color.Gray else Color.Black
                 )
             }
